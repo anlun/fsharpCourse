@@ -208,11 +208,23 @@ let main argv =
               n := n - 1
             };
             write(res)"
-  let inter = Interpreter.bs (fun _ -> None)
-  let e0 = Parser.parse () s1
-  let e = e0 |> List.map (fun (x, _) -> x)
+  
+  let interBS = Interpreter.bs (fun _ -> None)
+  let e0 = Parser.parse () s1 |> List.head |> fst
   printfn "%A" e0
-  e |> List.map inter |> ignore
+  
+  let mutable env = fun _ -> None
+  let mutable prm = Some e0
+  while prm.IsSome do
+    let (Some p) = prm
+    let (nenv, nprm) = Interpreter.ss env p
+    env <- nenv
+    prm <- nprm
+    printfn "%A" prm
+    System.Console.ReadLine()
+  
+  (*e |> List.map interBS |> ignore*)
+
 (*
   let e1 = Parser.parse () s1
   printfn "%A" e1
