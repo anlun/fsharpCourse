@@ -41,7 +41,7 @@ module CoreParser =
   
   let number = map (fun s -> %s |> System.Int32.Parse) (many1 digit) 
   let word   = map (~%) (many1 alpha)
-  let spaces = many0 (char ' ')
+  let spaces = many0 (char ' ' <|> char '\t' <|> char '\n' <|> char '\010')
   let sp   f = spaces >> f << spaces 
   
   let paren p =
@@ -108,7 +108,7 @@ module Expr =
       calc env y >>= fun vy -> 
       (op o) vx vy |> mreturn 
 
-module Interpreter =
+module Parser =
   type t = Read   of string
          | Write  of Expr.t
          | Assign of string * Expr.t
@@ -139,16 +139,83 @@ module Interpreter =
   let rec parse _: t CoreParser.t =
     seqP parse <|> term parse
 
+module Interpreter =
+  open Parser
+  open Expr
+  open Expr.Parser
+  open System
+
+  let updateEnv env v e = fun x -> if x = v then e else env x
+
+
+  let readS env v = printf "Read(%s): " v
+                    let e = try 
+                              Console.ReadLine() |> System.Int32.Parse |> Some
+                            with
+                            | _ -> None
+                    updateEnv env v e
+  let writeS env e = calc env e |> printfn "%A" 
+                     env
+  let assignS env v e = updateEnv env v (calc env e)
+
+
+  exception UndefinedValues
+  let rec bs (env: string -> int option) (op: Parser.t) =
+    match op with
+    | Read v  -> readS env v
+    | Write e -> writeS env e 
+    | Assign (v, e) -> assignS env v e 
+    | Seq (op1, op2) -> let nenv = bs env op1
+                        bs nenv op2
+    | If (e, op1, op2) -> match calc env e with
+                          | None -> raise UndefinedValues
+                          | Some 0 -> bs env op2
+                          | Some _ -> bs env op1
+    | While (e, body) -> match calc env e with
+                         | None -> raise UndefinedValues
+                         | Some 0 -> env
+                         | Some _ -> let nenv = bs env body
+                                     bs nenv op
+
+  let rec ss (env: string -> int option) (op: Parser.t) =
+    match op with 
+    | Read v  -> readS env v, None
+    | Write e -> writeS env e, None
+    | Assign (v, e) -> assignS env v e, None
+    | Seq (op1, op2) -> let (nenv, nop1) = ss env op1
+                        match nop1 with
+                        | None -> nenv, Some op2
+                        | Some op -> nenv, Some (Seq (op, op2))
+    | If (e, op1, op2) -> match calc env e with
+                          | None -> raise UndefinedValues
+                          | Some 0 -> env, Some op2
+                          | Some _ -> env, Some op1
+    | While (e, body) -> match calc env e with
+                         | None -> raise UndefinedValues
+                         | Some 0 -> env, None
+                         | Some _ -> env, Some (Seq (body, op))
 
 open Expr.Parser
 open CoreParser
 
 [<EntryPoint>]
 let main argv =
-  let s1 = &"while (x + 5) { read(y); write(x) }"
-  let e1 = Interpreter.parse () s1
-  printfn "%A" e1
+  let s1 = &"read(x);
+             read(n);
+             res := 1;
+             while (n) {
+              res := res * x;
+              n := n - 1
+            };
+            write(res)"
+  let inter = Interpreter.bs (fun _ -> None)
+  let e0 = Parser.parse () s1
+  let e = e0 |> List.map (fun (x, _) -> x)
+  printfn "%A" e0
+  e |> List.map inter |> ignore
 (*
+  let e1 = Parser.parse () s1
+  printfn "%A" e1
   let s1 = &"(5 + 5 - (x + 7))"
   let e1 = parse () s1
   let s2 = &"(5 + 5 - (y + 7))"
