@@ -40,8 +40,20 @@ let rec print l =
   | Nil -> printf "\n"
   | Cons (x, l) -> printf "%i, " x; print l 
 
+type Peano = Zero | S of Peano
+
+let suc    (p : Peano) = S p
+let minus1 (p : Peano) =
+  match p with
+  | Zero -> Zero
+  | S p  -> p
+
+let rec plus a b =
+  match a with
+  | Zero -> b
+  | S  a -> S (plus a b)
+
 [<EntryPoint>]
-let main argv =
-  decToBin 32
-  printf "%i\n" (fastPower 5 5)
+let main args =
+  printf "%A\n" (minus1 (S (S Zero)))
   0
